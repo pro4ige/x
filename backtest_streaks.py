@@ -7,8 +7,8 @@ from backtesting.lib import crossover
 tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'JPM', 'JNJ', 'V', 
            'PG', 'MA', 'HD', 'DIS', 'PYPL', 'ADBE', 'NFLX', 'CRM', 'BAC', 'INTC']
 
-# Téléchargement des données historiques (2015-2025)
-data = yf.download(tickers, start="2015-01-01", end="2025-01-01", interval="1d", group_by='ticker')
+# Téléchargement des données historiques (2015-2025) avec auto_adjust=False pour conserver les prix réels
+data = yf.download(tickers, start="2015-01-01", end="2025-01-01", interval="1d", group_by='ticker', auto_adjust=False)
 
 def count_candle_streaks(df, n):
     """
@@ -140,14 +140,28 @@ for ticker in tickers:
     try:
         # Préparer les données
         asset_data = data[ticker].dropna()
-        asset_data.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        
+        # Vérifier les colonnes disponibles et les renommer
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        available_cols = asset_data.columns.tolist()
+        
+        # Créer un nouveau DataFrame avec les colonnes requises
+        prepared_data = pd.DataFrame({
+            'Open': asset_data['Open'],
+            'High': asset_data['High'],
+            'Low': asset_data['Low'],
+            'Close': asset_data['Close'],
+            'Adj Close': asset_data['Adj Close'] if 'Adj Close' in available_cols else asset_data['Close'],
+            'Volume': asset_data['Volume'] if 'Volume' in available_cols else 0
+        })
         
         # Exécuter le backtest
-        bt = Backtest(asset_data, ConsecutiveRedStrategy, cash=100000, commission=.0002, exclusive_orders=True)
+        bt = Backtest(prepared_data, ConsecutiveRedStrategy, cash=100000, commission=.0002, exclusive_orders=True)
         stats = bt.run()
         
         results[ticker] = stats['Return [%]']
-    except KeyError:
+    except Exception as e:
+        print(f"Erreur avec {ticker}: {str(e)}")
         continue
 
 # Afficher les résultats
@@ -157,6 +171,6 @@ for ticker, ret in results.items():
 
 # Calculer le rendement total et moyen
 total_return = sum(results.values())
-avg_return = total_return / len(results)
+avg_return = total_return / len(results) if results else 0
 print(f"\nRendement total sur {len(results)} actifs: {total_return:.2f}%")
 print(f"Rendement moyen par actif: {avg_return:.2f}%")
